@@ -1,0 +1,63 @@
+name: Build all maps
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  prep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure release maps-v1 exists
+        env: {GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"}
+        run: gh release view maps-v1 -R "$GITHUB_REPOSITORY" || gh release create maps-v1 -R "$GITHUB_REPOSITORY" -t maps-v1 -n "country maps for Dalilah Plus"
+  build:
+    needs: prep
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include:
+          - {n: saudi,      pbf: asia/gcc-states,   bbox: "34.5,16.3,55.7,32.2"}
+          - {n: uae,        pbf: asia/gcc-states,   bbox: "51.5,22.6,56.4,26.1"}
+          - {n: kuwait,     pbf: asia/gcc-states,   bbox: "46.5,28.5,48.5,30.1"}
+          - {n: qatar,      pbf: asia/gcc-states,   bbox: "50.7,24.45,51.7,26.2"}
+          - {n: bahrain,    pbf: asia/gcc-states,   bbox: "50.35,25.55,50.85,26.35"}
+          - {n: oman,       pbf: asia/gcc-states,   bbox: "52.0,16.6,59.9,26.4"}
+          - {n: iraq,       pbf: asia/iraq,         bbox: "38.7,29.0,48.8,37.4"}
+          - {n: syria,      pbf: asia/syria,        bbox: "35.7,32.3,42.4,37.4"}
+          - {n: lebanon,    pbf: asia/lebanon,      bbox: "35.1,33.05,36.65,34.7"}
+          - {n: yemen,      pbf: asia/yemen,        bbox: "41.8,12.1,54.6,19.0"}
+          - {n: egypt,      pbf: africa/egypt,      bbox: "24.7,21.7,37.1,31.7"}
+          - {n: libya,      pbf: africa/libya,      bbox: "9.3,19.5,25.2,33.2"}
+          - {n: tunisia,    pbf: africa/tunisia,    bbox: "7.5,30.2,11.7,37.6"}
+          - {n: algeria,    pbf: africa/algeria,    bbox: "-8.7,18.9,12.0,37.1"}
+          - {n: morocco,    pbf: africa/morocco,    bbox: "-17.2,20.7,-0.9,35.95"}
+          - {n: sudan,      pbf: africa/sudan,      bbox: "21.8,8.6,38.7,22.3"}
+          - {n: mauritania, pbf: africa/mauritania, bbox: "-17.1,14.7,-4.8,27.3"}
+          - {n: somalia,    pbf: africa/somalia,    bbox: "40.9,-1.7,51.5,12.0"}
+          - {n: djibouti,   pbf: africa/djibouti,   bbox: "41.7,10.9,43.5,12.8"}
+          - {n: comoros,    pbf: africa/comoros,    bbox: "43.2,-12.45,44.6,-11.3"}
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y osmium-tool osmosis openjdk-17-jre-headless curl
+          mkdir -p ~/.openstreetmap/osmosis/plugins
+          curl -fL https://repo1.maven.org/maven2/org/mapsforge/mapsforge-map-writer/0.21.0/mapsforge-map-writer-0.21.0-jar-with-dependencies.jar -o ~/.openstreetmap/osmosis/plugins/mapsforge-map-writer.jar
+      - name: Download PBF
+        run: curl -fL "https://download.geofabrik.de/${{ matrix.pbf }}-latest.osm.pbf" -o src.pbf
+      - name: Extract and write map
+        env:
+          JAVACMD_OPTIONS: "-Xmx10g"
+          JAVA_OPTS: "-Xmx10g"
+        run: |
+          B="${{ matrix.bbox }}"
+          osmium extract -b "$B" src.pbf -o part.pbf --overwrite
+          rm -f src.pbf
+          osmosis --rb file=part.pbf --mapfile-writer file="${{ matrix.n }}.map" type=hd bbox="$(echo $B | awk -F, '{print $2","$1","$4","$3}')" preferred-languages=ar,en zoom-interval-conf=5,0,7,10,8,11,14,12,21
+          ls -la "${{ matrix.n }}.map"
+      - name: Upload to release
+        env: {GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"}
+        run: gh release upload maps-v1 "${{ matrix.n }}.map" --clobber -R "$GITHUB_REPOSITORY"
