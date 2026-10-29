@@ -43,9 +43,14 @@ jobs:
       - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y osmium-tool osmosis openjdk-17-jre-headless curl
+          sudo apt-get install -y osmium-tool osmosis curl
           mkdir -p ~/.openstreetmap/osmosis/plugins
           curl -fL https://repo1.maven.org/maven2/org/mapsforge/mapsforge-map-writer/0.21.0/mapsforge-map-writer-0.21.0-jar-with-dependencies.jar -o ~/.openstreetmap/osmosis/plugins/mapsforge-map-writer.jar
+      - name: Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
       - name: Download PBF
         run: curl -fL "https://download.geofabrik.de/${{ matrix.pbf }}-latest.osm.pbf" -o src.pbf
       - name: Extract and write map
@@ -53,6 +58,7 @@ jobs:
           JAVACMD_OPTIONS: "-Xmx10g"
           JAVA_OPTS: "-Xmx10g"
         run: |
+          java -version
           B="${{ matrix.bbox }}"
           osmium extract -b "$B" src.pbf -o part.pbf --overwrite
           rm -f src.pbf
